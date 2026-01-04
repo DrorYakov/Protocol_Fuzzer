@@ -22,6 +22,12 @@ def start_server():
         server_sock.close()
 
 def handle_client(sock):
+    """
+    Handles incoming client requests and checks for buffer overflow conditions.
+    
+    Reads the request data and parses the 'X-Small-Buffer' header.
+    If the header value exceeds 256 bytes, simulates a system crash.
+    """
     try:
         request = sock.recv(4096).decode('utf-8', errors='ignore')
         if not request:
@@ -39,7 +45,7 @@ def handle_client(sock):
         sock.sendall(response.encode())
         
     except SystemExit:
-        raise # מעביר את הקריסה למעלה כדי לסגור את התוכנית
+        raise # Re-raise to allow server shutdown
     except:
         pass
     finally:
