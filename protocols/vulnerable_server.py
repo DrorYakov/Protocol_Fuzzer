@@ -1,78 +1,56 @@
+from boofuzz import *
 import socket
+import time
 import sys
 
-# Configuration
-HOST = '0.0.0.0'
-PORT = 8080  # Listening port
+TARGET_IP = "127.0.0.1"
+TARGET_PORT = 8080
 
-
-def start_server():
-    """
-    Starts a vulnerable HTTP server.
-
-    Behavior:
-    1. Listens on TCP port 8080.
-    2. Accepts incoming HTTP requests.
-    3. If the request contains the keyword 'FUZZ_CRASH', simulates a server crash.
-    4. Otherwise, returns a standard HTTP 200 OK response.
-    """
-    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # Allow port reuse to avoid 'Address already in use' errors
-    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
+def check_crash(target, fuzz_data_logger, session, *args, **kwargs):
+    """בודק אם השרת מת אחרי השליחה"""
     try:
-        server_sock.bind((HOST, PORT))
-        server_sock.listen(5)
-        print(f"[*] Vulnerable HTTP Server running on {HOST}:{PORT}")
-        print("[*] Send 'FUZZ_CRASH' to kill this server.")
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.5)
+        s.connect((TARGET_IP, TARGET_PORT))
+        s.close()
+    except:
+        print("\n[!] CRASH CONFIRMED! The server died due to Buffer Overflow.")
+        # שמירת הפאקטה הארוכה שגרמה לקריסה
+        with open(f"overflow_crash_{int(time.time())}.txt", "wb") as f:
+            f.write(session.last_send)
+        sys.exit(0)
 
-        while True:
-            client_sock, addr = server_sock.accept()
-            handle_client(client_sock)
+def main():
+    session = Session(
+        target=Target(connection=SocketConnection(TARGET_IP, TARGET_PORT, proto='tcp')),
+        sleep_time=0.1,
+        post_test_case_callbacks=[check_crash]
+    )
 
-    except KeyboardInterrupt:
-        print("\n[*] Server stopping...")
-    except RuntimeError as e:
-        print(f"\n[!!!] SERVER CRASHED: {e}")
-        sys.exit(1)
-    finally:
-        server_sock.close()
+    s_initialize("OverflowRequest")
 
+    # 1. חלקים קבועים (Fuzzer לא ייגע בהם)
+    s_string("GET / HTTP/1.1", fuzzable=False)
+    s_static("\r\n")
+    s_string("Host: 127.0.0.1", fuzzable=False)
+    s_static("\r\n")
 
-def handle_client(sock):
-    """
-    Handles a single client connection.
-    Parses the input and triggers a crash if the vulnerability keyword is found.
-    """
-    try:
-        request = sock.recv(4096).decode('utf-8', errors='ignore')
+    # 2. החלק שבו אנחנו רוצים להתמקד (The Target)
+    s_string("X-Small-Buffer", fuzzable=False) # שם השדה קבוע
+    s_delim(": ", fuzzable=False)          # המפריד קבוע
 
-        if not request:
-            sock.close()
-            return
+    # כאן הקסם: אנחנו מגדירים מחרוזת פשוטה, אבל לא נועלים אותה (אין fuzzable=False)
+    # boofuzz יבין שזה המשתנה היחיד ויתחיל להפציץ אותו באורכים משתנים:
+    # 10 תווים, 100 תווים, 1000 תווים, 5000 תווים וכו'.
+    s_string("A", name="BufferField") 
 
-        # --- VULNERABILITY TRIGGER ---
-        if "FUZZ_CRASH" in request:
-            raise RuntimeError("Fatal Error: Buffer Overflow Simulated!")
-        # -----------------------------
+    s_static("\r\n\r\n")
 
-        # Standard HTTP Response
-        http_response = (
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/plain\r\n"
-            "Content-Length: 12\r\n"
-            "\r\n"
-            "Server Alive"
-        )
-        sock.sendall(http_response.encode('utf-8'))
-
-    except Exception as e:
-        # Re-raise the simulated crash to stop the main loop
-        if "Simulated" in str(e):
-            raise e
-    finally:
-        sock.close()
-
+    session.connect(s_get("OverflowRequest"))
+    
+    print("[*] Starting Fuzzer...")
+    print("[*] Strategy: Targeting 'X-Small-Buffer' with increasing lengths.")
+    session.fuzz()
 
 if __name__ == "__main__":
-    start_server()
+    main()
