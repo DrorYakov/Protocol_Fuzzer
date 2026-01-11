@@ -1,56 +1,53 @@
-from boofuzz import *
 import socket
-import time
 import sys
 
-TARGET_IP = "127.0.0.1"
-TARGET_PORT = 8080
+HOST = '0.0.0.0'
+PORT = 8080
 
-def check_crash(target, fuzz_data_logger, session, *args, **kwargs):
-    """בודק אם השרת מת אחרי השליחה"""
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(0.5)
-        s.connect((TARGET_IP, TARGET_PORT))
-        s.close()
-    except:
-        print("\n[!] CRASH CONFIRMED! The server died due to Buffer Overflow.")
-        # שמירת הפאקטה הארוכה שגרמה לקריסה
-        with open(f"overflow_crash_{int(time.time())}.txt", "wb") as f:
-            f.write(session.last_send)
-        sys.exit(0)
-
-def main():
-    session = Session(
-        target=Target(connection=SocketConnection(TARGET_IP, TARGET_PORT, proto='tcp')),
-        sleep_time=0.1,
-        post_test_case_callbacks=[check_crash]
-    )
-
-    s_initialize("OverflowRequest")
-
-    # 1. חלקים קבועים (Fuzzer לא ייגע בהם)
-    s_string("GET / HTTP/1.1", fuzzable=False)
-    s_static("\r\n")
-    s_string("Host: 127.0.0.1", fuzzable=False)
-    s_static("\r\n")
-
-    # 2. החלק שבו אנחנו רוצים להתמקד (The Target)
-    s_string("X-Small-Buffer", fuzzable=False) # שם השדה קבוע
-    s_delim(": ", fuzzable=False)          # המפריד קבוע
-
-    # כאן הקסם: אנחנו מגדירים מחרוזת פשוטה, אבל לא נועלים אותה (אין fuzzable=False)
-    # boofuzz יבין שזה המשתנה היחיד ויתחיל להפציץ אותו באורכים משתנים:
-    # 10 תווים, 100 תווים, 1000 תווים, 5000 תווים וכו'.
-    s_string("A", name="BufferField") 
-
-    s_static("\r\n\r\n")
-
-    session.connect(s_get("OverflowRequest"))
+def start_server():
+    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     
-    print("[*] Starting Fuzzer...")
-    print("[*] Strategy: Targeting 'X-Small-Buffer' with increasing lengths.")
-    session.fuzz()
+    try:
+        server_sock.bind((HOST, PORT))
+        server_sock.listen(5)
+        print(f"Server running on {HOST}:{PORT}")
+        print("Waiting for connections...")
+
+        while True:
+            client_sock, _ = server_sock.accept()
+            handle_client(client_sock)
+    except KeyboardInterrupt:
+        print("Server stopping by user request")
+    finally:
+        server_sock.close()
+
+def handle_client(sock):
+    try:
+        request = sock.recv(4096).decode('utf-8', errors='ignore')
+        if not request:
+            return
+
+        # Simple parsing to find the specific header
+        for line in request.split('\r\n'):
+            if line.startswith("X-Small-Buffer:"):
+                value = line.split(":", 1)[1].strip()
+                
+                # Vulnerability: Crash if value is > 256 bytes
+                if len(value) > 256:
+                    print(f"Buffer overflow detected ({len(value)} bytes). System crash.")
+                    sys.exit(1) # Simulates a fatal crash
+
+        # Send standard response
+        response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK"
+        sock.sendall(response.encode())
+        
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"Error handling client: {e}")
+    finally:
+        sock.close()
 
 if __name__ == "__main__":
-    main()
+    start_server()
