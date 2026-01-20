@@ -1,115 +1,159 @@
 # Protocol Fuzzer Project 🛡️
 
-A comprehensive security research project demonstrating **Protocol Fuzzing** (Black-Box Testing) techniques. This project implements custom fuzzers using the **Boofuzz** framework to detect critical vulnerabilities—such as Buffer Overflows and Logic Errors—in simulated FTP, DNS, and proprietary TCP servers.
-
-## 👥 Authors
-
-* **Shimon Khakshour** - [GitHub Profile](https://github.com/shimon2005)
-* **Dror Yakov Hai** - [GitHub Profile](https://github.com/DrorYakov)
+A comprehensive security-research project demonstrating **Protocol Fuzzing** (black-box testing) techniques. This repository implements custom fuzzers using the **Boofuzz** framework to detect critical vulnerabilities—such as buffer overflows and logic errors—in simulated FTP, DNS, and proprietary TCP servers.
 
 ---
 
-## 📖 Overview
+## Authors
 
-The goal of this project is to simulate a realistic network environment containing vulnerable services and to develop automated attack tools (Fuzzers) capable of crashing them. Unlike standard functional testing, our Fuzzers send massive amounts of malformed and random data to edge cases, aiming to trigger unexpected behaviors.
-
-We targeted three distinct server implementations:
-1.  **Vulnerable FTP Server (C)** - Contains a Stack Buffer Overflow.
-2.  **Math Server (Python)** - Contains a Logic Error (Division by Zero).
-3.  **Vulnerable DNS Server (C)** - Contains a Heap Buffer Overflow (simulating **CVE-2017-14491** found in Dnsmasq).
-
-## 🏗️ Architecture
-
-The project environment is containerized using **Docker** to isolate the vulnerable services and ensure reproducible crashes without harming the host machine.
-
-### The Vulnerable Services
-| Service | Language | Port | Vulnerability Type | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| **FTP Server** | C | `2121` | Stack Buffer Overflow | Unsafe `strcpy` usage when handling the `USER` command. |
-| **Math Server** | Python | `9090` | Denial of Service (DoS) | Logic error failing to handle division by zero. |
-| **DNS Server** | C | `5454` | Heap Buffer Overflow | Miscalculated `malloc` size leading to `memcpy` overflow (CVE-2017-14491 simulation). |
+* **Shimon Khakshour** — [https://github.com/shimon2005](https://github.com/shimon2005)
+* **Dror Yakov Hai** — [https://github.com/DrorYakov](https://github.com/DrorYakov)
 
 ---
 
-## 🚀 Getting Started
+## Overview
 
-### Prerequisites
-* **Docker** & **Docker Compose**
-* **Python 3.x**
-* **Boofuzz** library (`pip install boofuzz`)
+The goal of this project is to simulate a realistic network environment containing intentionally vulnerable services and to develop automated attack tools (fuzzers) capable of crashing them. Unlike functional tests, fuzzers send malformed and random inputs to protocol fields and edge cases to trigger unexpected behaviors.
 
-### Installation & Setup
+We targeted three different services with distinct vulnerability classes:
 
-1.  **Clone the repository:**
-    ```bash
-    git clone [https://github.com/your-username/Protocol_Fuzzer.git](https://github.com/your-username/Protocol_Fuzzer.git)
-    cd Protocol_Fuzzer
-    ```
-
-2.  **Build and Start the Vulnerable Environment:**
-    We use Docker to compile the C servers with specific flags (e.g., `-fno-stack-protector`, `-z execstack`) to make them exploitable for demonstration purposes.
-    ```bash
-    docker-compose up --build
-    ```
-    *This command will start all three vulnerable servers on their respective ports.*
+1. **Vulnerable FTP Server (C)** — Stack buffer overflow in `USER` handling.
+2. **Math Server (Python)** — Logic error that leads to an unhandled division-by-zero (DoS).
+3. **Vulnerable DNS Server (C)** — Heap buffer overflow simulating CVE-2017-14491.
 
 ---
 
-## 🛠️ Usage (Running the Fuzzers)
+## Architecture
 
-Each fuzzer is a standalone Python script designed to attack a specific protocol.
+The environment is containerized with Docker to isolate services and ensure reproducible crashes without affecting the host.
 
-### 1. Attacking the FTP Server (Stack Overflow)
-This fuzzer sends long strings to the `USER` command field.
+### Services
+
+| Service     | Language |   Port | Vulnerability Type    | Short Description                                                                          |
+| ----------- | -------: | -----: | --------------------- | ------------------------------------------------------------------------------------------ |
+| FTP Server  |        C | `2121` | Stack Buffer Overflow | Unsafe `strcpy` when copying the `USER` field into a 64‑byte buffer.                       |
+| Math Server |   Python | `9090` | Logic Error (DoS)     | Performs integer division without validating the divisor (can be 0).                       |
+| DNS Server  |        C | `5454` | Heap Buffer Overflow  | Incorrect response buffer size calculation; `memcpy` overflows for long qnames (CVE-like). |
+
+All services run inside Docker containers. The C services are compiled with exploitation-friendly flags (e.g. `-fno-stack-protector`, `-z execstack`, AddressSanitizer enabled where noted) to make memory errors observable and reportable for educational purposes.
+
+---
+
+## Prerequisites
+
+* Docker & Docker Compose
+* Python 3.x
+* `boofuzz` Python package (`pip install boofuzz`)
+
+---
+
+## Quick Start
+
+1. **Clone the repository**
+
+```bash
+git clone https://github.com/your-username/Protocol_Fuzzer.git
+cd Protocol_Fuzzer
+```
+
+2. **Build and start the environment**
+
+```bash
+docker-compose up --build
+```
+
+This will compile the C servers and start all vulnerable services on their ports inside isolated containers.
+
+> Note: The build intentionally disables some hardening features to make the vulnerabilities visible for study. Do **not** use these images or tools against systems you do not own or have explicit authorization to test.
+
+---
+
+## Running the Fuzzers
+
+Each fuzzer is an independent Python script located in `Fuzzer/`. They are written with the **Boofuzz** framework and target the corresponding service.
+
+### 1. FTP Fuzzer (Stack overflow)
+
+Attacks the `USER` command by sending overly long username strings.
+
 ```bash
 python Fuzzer/ftp_fuzzer.py
-Expected Result: The server crashes when receiving a username longer than 64 bytes. The fuzzer detects the socket disconnection, saves the crash packet, and the Docker container restarts.
+```
 
-2. Attacking the Math Server (Logic Error)
-This fuzzer sends binary packets with random opcodes and operands.
+**Expected behavior:** Sending a username longer than 64 bytes corrupts the stack, crashing the server. The fuzzer detects the socket disconnection, saves the crashing packet, and Docker can be configured to restart the container so the experiment can continue.
 
-Bash
+### 2. Math Fuzzer (Logic error / DoS)
 
+Sends binary packets with random opcodes and operands. One opcode performs integer division.
+
+```bash
 python Fuzzer/math_fuzzer.py
-Expected Result: The fuzzer eventually sends a "Division" opcode with 0 as the second operand. The server throws an unhandled ZeroDivisionError exception and terminates.
+```
 
-3. Attacking the DNS Server (Heap Overflow / CVE-2017-14491)
-This fuzzer generates complex DNS UDP packets with varying domain name lengths.
+**Expected behavior:** The fuzzer will eventually send a division opcode with a zero divisor. The server raises `ZeroDivisionError` and the process terminates.
 
-Bash
+### 3. DNS Fuzzer (Heap overflow, CVE-like)
 
+Generates UDP DNS queries with variable domain lengths to exercise parsing and copying logic.
+
+```bash
 python Fuzzer/dns_fuzzer.py
-Expected Result: Sending a domain name exceeding the allocated buffer size (header + 128 bytes) triggers a Heap Buffer Overflow via memcpy. The AddressSanitizer (ASan) in the Docker container will report the memory violation and abort the server.
+```
 
-🔍 Vulnerability Deep Dive
-💥 FTP Server: Stack Buffer Overflow
-The Bug: The server uses strcpy(user, recvbuf + 5) to copy the input into a fixed 64-byte buffer without checking the length.
+**Expected behavior:** A query with a domain name longer than the server's estimated buffer causes a heap overflow during `memcpy`. If AddressSanitizer (ASan) is enabled in the container, it will report the memory violation and abort the process.
 
-The Exploit: Sending >64 bytes overwrites the stack return address, crashing the program (and potentially allowing RCE in a real-world scenario).
+---
 
-➗ Math Server: Logic Denial of Service
-The Bug: The server performs result = num_a // num_b blindly.
+## Vulnerability Deep Dives
 
-The Exploit: A packet with num_b = 0 causes a runtime exception that kills the server process immediately.
+### FTP Server — Stack Buffer Overflow
 
-🌐 DNS Server: Heap Buffer Overflow (CVE-2017-14491)
-The Bug: A simulation of a real vulnerability in Dnsmasq 2.75. The server calculates the response buffer size incorrectly:
+**Bug:** The server uses `strcpy(user, recvbuf + 5)` to copy the username into a fixed 64-byte buffer without bounds checking.
 
-C
+**Impact:** Sending `USER` with >64 bytes overwrites the stack return address and can crash the process or — in an exploitable configuration — allow code execution.
 
-int estimated_size = sizeof(struct DNS_HEADER) + 128; // Too small for long domains
+**Mitigations:** Use `strncpy`/`strlcpy` (with correct size), validate input lengths, enable compiler mitigations (stack canaries, ASLR, NX), and avoid unsafe C string functions.
+
+---
+
+### Math Server — Logic Denial of Service
+
+**Bug:** The server computes `result = num_a // num_b` without validating `num_b`.
+
+**Impact:** A packet with `num_b == 0` triggers an unhandled `ZeroDivisionError` that terminates the server process.
+
+**Mitigations:** Validate inputs, handle exceptions gracefully, and implement rate-limiting / process supervision to reduce DoS impact.
+
+---
+
+### DNS Server — Heap Buffer Overflow (CVE-like)
+
+**Bug:** The server underestimates the buffer needed for DNS responses:
+
+```c
+int estimated_size = sizeof(struct DNS_HEADER) + 128; // too small for long domains
 // ...
-memcpy(ptr, qname, qname_len); // Overflow occurs here
-The Exploit: The fuzzer constructs a valid DNS packet but extends the query name beyond the 128-byte safety margin, corrupting the heap metadata.
+memcpy(ptr, qname, qname_len); // overflow when qname_len > allocated
+```
 
-📊 Results
-By using these fuzzing tools, we successfully:
+**Impact:** Copying a long qname overflows the heap area, corrupts heap metadata, and leads to crashes and possible arbitrary code execution in a real-world service. This reproduces the class of bug seen in CVE-2017-14491.
 
-Automated the discovery of fatal crashes in all three servers.
+**Mitigations:** Properly calculate buffer sizes from input length, use safe allocation patterns, and enable runtime checks (ASan, fortify, hardened malloc).
 
-Generated crash reports and logs for analysis.
+---
 
-Demonstrated the effectiveness of black-box testing in uncovering memory corruption and logic flaws that static analysis might miss.
+## Results & Artifacts
 
-⚖️ Disclaimer
-This project is for educational purposes only. The vulnerabilities demonstrated here are intentional and exist within a controlled, isolated environment. Do not use these tools against targets without explicit permission.
+* Crashes were automatically detected by the fuzzers.
+* Crash packets are saved for triage and analysis.
+* Docker container logs and ASan reports (when enabled) provide evidence and stack traces for each crash.
+
+Use the saved crash cases and logs to triage, reproduce, and write minimal testcases or patches.
+
+---
+
+## Safety & Legal Disclaimer
+
+This repository is strictly for educational use within a controlled environment. Do **not** point these fuzzers or vulnerable binaries at production systems or targets for which you do not have explicit authorization. Misuse may be illegal.
+
+---
