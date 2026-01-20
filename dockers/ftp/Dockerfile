@@ -8,7 +8,9 @@ COPY vulnerable_ftp.c .
 RUN gcc vulnerable_ftp.c -o ftp \
     -fno-stack-protector \
     -z execstack \
-    -no-pie
+    -fsanitize=address \
+    -no-pie \
+    -g
 
 EXPOSE 2121
 CMD ["./ftp"]

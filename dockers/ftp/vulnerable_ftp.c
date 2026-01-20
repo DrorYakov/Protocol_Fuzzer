@@ -6,7 +6,7 @@
 #define PORT 2121
 
 int main() {
-    // 🔴 Disable stdout buffering
+    // Disable stdout buffering
     setvbuf(stdout, NULL, _IONBF, 0);
 
     int server_fd, client_fd;
@@ -47,6 +47,9 @@ int main() {
                 printf("[!] USER command detected\n");
                 printf("[!] Copying %ld bytes into 64-byte buffer\n",
                        strlen(recvbuf + 5));
+                if (strlen(recvbuf + 5) > 63) {
+                    printf("[!] Buffer overflow detected!\n");
+                }
 
                 //  overflow
                 strcpy(user, recvbuf + 5);
