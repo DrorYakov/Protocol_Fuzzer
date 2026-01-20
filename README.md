@@ -4,8 +4,8 @@ A comprehensive security research project demonstrating **Protocol Fuzzing** (Bl
 
 ## 👥 Authors
 
-* **Shimon Khakshour** - [GitHub Profile](https://github.com/shimon2005)
-* **Dror Yakov Hai** - [GitHub Profile](https://github.com/DrorYakov)
+* [Shimon Khakshour](https://github.com/shimon2005)
+* [Dror Yakov Hai](https://github.com/DrorYakov)
 
 ---
 
@@ -113,3 +113,4 @@ By using these fuzzing tools, we successfully:
 
 ## ⚖️ Disclaimer
 This project is for **educational purposes only**. The vulnerabilities demonstrated here are intentional and exist within a controlled, isolated environment. Do not use these tools against targets without explicit permission.
+
